@@ -1,0 +1,150 @@
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERI - ćw 1</title>
+
+    <style>
+        table, tr, td {
+            border: 2px solid black;
+            border-collapse: collapse;
+        }
+    </style>
+
+</head>
+<body>
+
+    <div id="container">
+        
+    </div>
+
+
+
+<script>
+    class Cell {
+        constructor(x,y,parent = null,g=0,h=0,first=-1) {
+            this.x=x;
+            this.y=y;
+            this.parent=parent;
+            this.g=g;
+            this.h=h;
+            this.f=g+h;
+            this.first=first;
+        }
+    }
+
+    function euclideanMetric(start, end) {
+        return Math.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2);
+    }
+
+    function inList(cell, list) {
+        return list.some(n => n.x === cell.x && n.y === cell.y);
+    }
+
+    function findInList(cell, list) {
+        return list.find(n => n.x === cell.x && n.y === cell.y);
+    }
+
+    function aStar(start, goal, grid) {
+        let openList = [];
+        let closetList = [];
+        const direction = [
+            [0, 1], 
+            [0,-1], 
+            [-1, 0],  
+            [1, 0],
+        ];
+        openList.push(start); 
+        while (openList.length > 0) {
+            openList.sort((a, b) => a.f - b.f || a.first - b.first);
+            let current = openList.shift();
+            closetList.push(current);
+            if (current.x == goal.x && current.y == goal.y) {
+                return constructPath(current, grid);
+            }
+            for (let i = 0; i < direction.length; i++) {
+                let newX = current.x + direction[i][0];
+                let newY = current.y + direction[i][1];
+                let adjustedY = grid.length - 1 - newY;
+
+                if (newX < 0 || newX >= grid[0].length || adjustedY < 0 || adjustedY >= grid.length)
+                    continue;
+
+                if (grid[adjustedY][newX] == '5')
+                    continue;
+            
+                let neighbor = new Cell(newX, newY, current, current.g + 1,0,i);
+                neighbor.h = euclideanMetric(neighbor, goal);
+                neighbor.f = neighbor.g + neighbor.h;
+
+                if (!inList(neighbor, closetList) && !inList(neighbor, openList)) {
+                    openList.push(neighbor);
+                }
+            }    
+        }
+        return null;
+    }
+
+    function constructPath(cell, grid) {
+        let path = [];
+        while (cell) {
+            let adjustedY= grid.length-1-cell.y;
+            grid[adjustedY][cell.x] = '3';
+
+            path.push(cell);
+            cell = cell.parent;
+        }
+        return path.reverse();
+    }
+
+    function generateTable(rows, cols, grid) {
+        const table = document.createElement("table");
+
+        for (let i = 0; i < rows; i++) {
+            const row = document.createElement("tr");
+
+            for (let j = 0; j < cols; j++) {
+                const cell = document.createElement("td");
+
+                if(grid[i][j] == '5') {
+                    cell.style.background = "black";
+                }
+
+                if(grid[i][j] == '3') {
+                    cell.style.background = "lightgreen";
+                }
+                cell.textContent = grid[i][j];
+                row.appendChild(cell);
+            }
+            table.appendChild(row);
+        }
+        document.getElementById("container").appendChild(table);
+    }
+
+    fetch("grid.txt")
+        .then((result) => result.text())
+        .then((data) => {
+            let grid = data
+            .trim()
+            .split('\n')
+            .map(line => line.replace('\r', '').split(' '));
+            console.log(grid);
+            
+            const goal = new Cell(19, 19);
+            const start = new Cell(0, 0, null, 1);
+            start.h = euclideanMetric(start, goal);
+            start.f = start.g + start.h;
+
+            const path = aStar(start, goal, grid);
+
+            generateTable(grid[0].length, grid.length, grid);
+
+            if (path) {
+                console.log(path);
+            } else {
+                console.log("Nie ma ścieżki");
+            }
+        })
+</script>
+</body>
+</html>
