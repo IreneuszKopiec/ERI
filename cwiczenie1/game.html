@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pac-Man z A*</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: none;
+        }
+        #startButton {
+            font-size: 18px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <button id="startButton">Start Game</button>
+    <canvas id="gameCanvas" width="400" height="220"></canvas>
+
+    <script>
+        // Ustawienia gry
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const gridSize = 20;
+        const tileCount = canvas.width / gridSize;
+        const win = 1040;
+        let gameOver = false;  // Stan gry
+
+        // Mapa gry: 0 = punkt, 1 = ściana
+        const map = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        let pacman = { x: 1, y: 1 };
+        let ghosts = [
+            { x: 10, y: 10 },
+            { x: 15, y: 5 }
+        ];
+        let score = 0;
+        let direction = { x: 0, y: 0 };
+        let nextDirection = { x: 0, y: 0 };
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let j = 0; j < map.length; j++) {
+                for (let i = 0; i < map[j].length; i++) {
+                    if (map[j][i] === 1) {
+                        ctx.fillStyle = 'blue';
+                        ctx.fillRect(i * gridSize, j * gridSize, gridSize, gridSize);
+                    } else if (map[j][i] === 0) {
+                        ctx.fillStyle = 'red';
+                        ctx.fillRect(i * gridSize + 6, j * gridSize + 6, gridSize / 4, gridSize / 4);
+                    }
+                }
+            }
+
+            ctx.fillStyle = 'yellow';
+            ctx.beginPath();
+            ctx.arc(pacman.x * gridSize + gridSize / 2, pacman.y * gridSize + gridSize / 2, gridSize / 2.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = 'red';
+            ghosts.forEach(ghost => {
+                ctx.fillRect(ghost.x * gridSize, ghost.y * gridSize, gridSize, gridSize);
+            });
+
+            ctx.fillStyle = 'white';
+            ctx.font = "14px Arial";
+            ctx.fillText(`Score: ${score}`, 10, 20);
+        }
+
+        function canMove(x, y) {
+            return x >= 0 && y >= 0 && x < map[0].length && y < map.length && map[y][x] !== 1;
+        }
+
+        function updateGame() {
+
+            if (gameOver) {
+                alert('Congratulations! Twój wynik: ' + score);
+                document.location.reload();
+            }
+
+            const newX = pacman.x + nextDirection.x;
+            const newY = pacman.y + nextDirection.y;
+
+            if (canMove(newX, newY)) {
+                direction = { ...nextDirection };
+            }
+
+            const currentX = pacman.x + direction.x;
+            const currentY = pacman.y + direction.y;
+
+            if (canMove(currentX, currentY)) {
+                pacman.x = currentX;
+                pacman.y = currentY;
+
+                if (map[pacman.y][pacman.x] === 0) {
+                    map[pacman.y][pacman.x] = 2;
+                    score += 10;
+                }
+            }
+
+            if(score == win) {
+                gameOver = true;
+            }
+
+            ghosts.forEach(ghost => {
+                const start = new Cell(ghost.x, ghost.y);
+                const goal = new Cell(pacman.x, pacman.y);
+                const path = aStar(start, goal, map);
+
+                if (path && path.length > 1) {
+                    const nextStep = path[1];
+                    ghost.x = nextStep.x;
+                    ghost.y = nextStep.y;
+                }
+
+                if (ghost.x === pacman.x && ghost.y === pacman.y) {
+                    alert('Game Over! Twój wynik: ' + score);
+                    document.location.reload();
+                }
+            });
+        }
+
+        let gameRunning = false;
+        const FPS = 5;
+        const frameInterval = 1000 / FPS;
+        let lastFrameTime = 0;
+
+        function gameLoop(currentTime) {
+            const timeSinceLastFrame = currentTime - lastFrameTime;
+
+            if (timeSinceLastFrame >= frameInterval) {
+                updateGame();
+                drawGame();
+                lastFrameTime = currentTime;
+            }
+
+            if (gameRunning) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'w' && direction.y === 0) nextDirection = { x: 0, y: -1 };
+            if (event.key === 's' && direction.y === 0) nextDirection = { x: 0, y: 1 };
+            if (event.key === 'a' && direction.x === 0) nextDirection = { x: -1, y: 0 };
+            if (event.key === 'd' && direction.x === 0) nextDirection = { x: 1, y: 0 };
+        });
+
+        startButton.addEventListener('click', () => {
+            startButton.style.display = 'none';
+            canvas.style.display = 'block';
+            gameRunning = true;
+            requestAnimationFrame(gameLoop);
+        });
+
+        class Cell {
+            constructor(x, y, parent = null, g = 0, h = 0, first = -1) {
+                this.x = x;
+                this.y = y;
+                this.parent = parent;
+                this.g = g;
+                this.h = h;
+                this.f = g + h;
+                this.first = first;
+            }
+        }
+
+        function euclideanMetric(start, end) {
+            return Math.sqrt((start.x - end.x) ** 2 + (start.y - end.y) ** 2);
+        }
+
+        function inList(cell, list) {
+            return list.some(n => n.x === cell.x && n.y === cell.y);
+        }
+
+        function aStar(start, goal, grid) {
+            let openList = [];
+            let closedList = [];
+            const directions = [
+                [0, 1],
+                [0, -1],
+                [-1, 0],
+                [1, 0],
+            ];
+
+            openList.push(start);
+
+            while (openList.length > 0) {
+                openList.sort((a, b) => a.f - b.f || a.first - b.first);
+                let current = openList.shift();
+                closedList.push(current);
+
+                if (current.x === goal.x && current.y === goal.y) {
+                    return reconstructPath(current);
+                }
+
+                for (let i = 0; i < directions.length; i++) {
+                    let newX = current.x + directions[i][0];
+                    let newY = current.y + directions[i][1];
+
+                    if (newX < 0 || newX >= grid[0].length || newY < 0 || newY >= grid.length || grid[newY][newX] === 1) {
+                        continue;
+                    }
+
+                    let neighbor = new Cell(newX, newY, current, current.g + 1, 0, i);
+                    neighbor.h = euclideanMetric(neighbor, goal);
+                    neighbor.f = neighbor.g + neighbor.h;
+
+                    if (!inList(neighbor, closedList) && !inList(neighbor, openList)) {
+                        openList.push(neighbor);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        function reconstructPath(cell) {
+            let path = [];
+            while (cell) {
+                path.push(cell);
+                cell = cell.parent;
+            }
+            return path.reverse();
+        }
+    </script>
+</body>
+</html>
