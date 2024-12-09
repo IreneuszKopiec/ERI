@@ -1,0 +1,487 @@
+#include "NXT++.h"
+#include <iostream>
+#include <conio.h>
+
+using namespace std;
+using namespace NXT;
+
+Comm::NXTComm comm;
+
+const int N = 10;
+
+int convert(int k, int x) {
+	x = x - k;
+	if (x > 180) x = x - 360;
+	else if (x < -180) x = 360 + x;
+	return x;
+}
+void steer(int k1, int k2, int k, 
+	int orient) {
+	float ksi = 0.5;
+	int cte = convert(k, orient);
+
+	int precyzja = 30;
+	if (cte <= 0) {
+		if (abs(cte) > precyzja) {
+			k2 = 0;
+		}
+		else {
+			k2 = k1 + (ksi * cte);
+		}
+	}
+	if (cte > 0) {
+		if (cte > precyzja) {
+			k1 = 0;
+		}
+		else {
+			k1 = k2 - (ksi * cte);
+		}
+	}
+
+	if (cte <= 0) {
+		NXT::Motor::SetForward(&comm, OUT_C, k1);
+		NXT::Motor::SetForward(&comm, OUT_B, k2);
+		Wait(2000);
+		NXT::Motor::SetForward(&comm, OUT_B, 0);
+		NXT::Motor::SetForward(&comm, OUT_C, 0);
+		NXT::Motor::Stop(&comm, OUT_B, 0);
+		NXT::Motor::Stop(&comm, OUT_C, 0);
+	}
+	else {
+		NXT::Motor::SetForward(&comm, OUT_B, k2);
+		NXT::Motor::SetForward(&comm, OUT_C, k1);
+		Wait(2000);
+		NXT::Motor::SetForward(&comm, OUT_B, 0);
+		NXT::Motor::SetForward(&comm, OUT_C, 0);
+		NXT::Motor::Stop(&comm, OUT_B, 0);
+		NXT::Motor::Stop(&comm, OUT_C, 0);
+	}
+	cout << orient << endl;
+	cout << "k1: " << k1 << " k2: " << k2 << endl;
+} 
+
+
+void pomiarUpdate(double prob[], int world[], int pomiar) {
+	double newProb[N];
+	double hit = 0.8;
+	double miss = 0.2;
+
+	for (int i = 0; i < N; i++) {
+		if (world[i] == pomiar) {
+			newProb[i] = prob[i] * hit;
+		}
+		else {
+			newProb[i] = prob[i] * miss;
+		}
+	}
+
+	double sum = 0.0;
+	for (int i = 0; i < N; i++) {
+		sum += newProb[i];
+	}
+	for (int i = 0; i < N; i++) {
+		prob[i] = newProb[i] / sum;
+	}
+
+}
+
+void moveUpdate(double prob[], int world[]) {
+	double newProb[N] = {0.0};
+	double one = 0.9;
+	double two = 0.1;
+
+	for (int i = 0; i < N; i++) {
+		int newIndex = (i + 1) % N;
+		newProb[i] = one * prob[newIndex] + two * prob[i];
+	}
+
+	for (int i = 0; i < N; i++) {
+		prob[i] = newProb[i];
+	}
+}
+
+char getColor(int x) {
+
+}
+
+int main()
+{
+	// N= 84
+
+		// Black = 75-80
+		//RED = 274-283
+		//Green = 130-140
+		//White 310-330
+
+	int world[N] = { 1,1,2,2,1,1,1,1,1,2 };
+	double prob[N];
+	double initProb = 1.0 / N;
+
+	for (int i = 0; i < N; i++) {
+		prob[i] = initProb;
+	}
+
+	int pomiar[] = { 1,1,1,1 };
+
+	for (int step = 0; step < 4; step++) {
+		pomiarUpdate(prob, world, pomiar[step]);
+		moveUpdate(prob, world);
+
+		cout << step + 1 << ": ";
+		for (int i = 0; i < N; i++) {
+			cout << prob[i] << " ";
+		}
+		cout << endl;
+	}
+
+	srand(time(NULL));
+	cout << "Szukanie sygnalu... to moze zajac chwile.\n";
+	if (NXT::OpenBT(&comm))
+	{
+		cout << "Sygnal znaleziony!";
+		cout << "\nPoziom baterii = " << NXT::BatteryLevel(&comm);
+		cout << "\nDostepna pamiec flash = " << NXT::GetAvailableFlash(&comm);
+		cout << endl << endl;
+		NXT::Sensor::SetSonar(&comm, IN_3);
+		NXT::Sensor::SetColor(&comm, IN_2, 'r');
+
+		int map[3][5] = {
+			{0,1,3,1,2},
+			{1,3,2,0,3},
+			{3,1,3,1,2}
+		};
+
+		int prob[3][5] = {
+			{0,0,0,0,0},
+			{0,0,0,0,0},
+			{0,0,0,0,0}
+		};
+
+
+		
+		
+
+		NXT::StartProgram(&comm, "program1");
+		char decyzja;
+		int orient;
+		int speed = 35;
+		int kolor;
+		int pole;
+		int path[10] = { 0 };
+		int time = 0;
+
+
+
+		kolor = NXT::Sensor::GetValue(&comm, IN_2);
+		cout << kolor << endl;
+		pole = -1;
+		if (kolor >= 70 && kolor <= 81) {
+			pole = 0;
+		}
+		if (kolor >= 220 && kolor <= 300) {
+			pole = 1;
+		}
+		if (kolor >= 126 && kolor <= 145) {
+			pole = 2;
+		}
+		if (kolor >= 305 && kolor <= 330) {
+			pole = 3;
+		}
+		path[time] = pole;
+		time++;
+		do
+		{
+			if (kbhit() == true) {
+				decyzja = getch();
+
+				if (decyzja == 'N' || decyzja == 'n') {
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_3);
+					steer(speed, speed, orient, orient);
+					Wait(1000);
+
+					kolor = NXT::Sensor::GetValue(&comm, IN_2);
+					cout << kolor << endl;
+					pole = -1;
+					if (kolor >= 70 && kolor <= 81) {
+						pole = 0;
+					}
+					if (kolor >= 220 && kolor <= 300) {
+						pole = 1;
+					}
+					if (kolor >= 126 && kolor <= 145) {
+						pole = 2;
+					}
+					if (kolor >= 305 && kolor <= 330) {
+						pole = 3;
+					}
+					path[time] = pole;
+					time++;
+					
+
+
+				}
+				if (decyzja == 'H' || decyzja == 'h')
+				{
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+
+				}
+			}
+		} while (decyzja != 'k' && decyzja != 'K');
+
+		
+		for (int i = 0; i < 10; i++) {
+			cout << path[i] << " ";
+		}
+
+
+
+		NXT::StopProgram(&comm);
+
+	}
+	NXT::Close(&comm);
+
+	cout << "\n\nPress ENTER to close program";
+	getchar();
+
+
+
+
+	/*
+	
+	int cte, prev_cte = 0, dcte, sum_cte = 0;
+	float ksi = 0.5, x = 0.2, r = 0.3;
+	srand(time(NULL));
+	cout << "Szukanie sygnalu... to moze zajac chwile.\n";
+	if (NXT::OpenBT(&comm))
+	{
+		cout << "Sygnal znaleziony!";
+		cout << "\nPoziom baterii = " << NXT::BatteryLevel(&comm);
+		cout << "\nDostepna pamiec flash = " << NXT::GetAvailableFlash(&comm);
+
+		NXT::Sensor::SetSonar(&comm, IN_2);
+
+		NXT::StartProgram(&comm, "program1");
+		char decyzja;
+		int orient;
+		int speed = 30;
+
+		do
+		{
+			if (kbhit() == true) {
+				decyzja = getch();
+
+				if (decyzja == 'N' || decyzja == 'n') {
+	
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 0, orient);
+
+					
+				}
+				if (decyzja == 'E' || decyzja == 'e')
+				{
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 90, orient);
+
+				}
+				if (decyzja == 'S' || decyzja == 's')
+				{
+		
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 180, orient);
+
+				}
+				if (decyzja == 'W' || decyzja == 'w')
+				{
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 270, orient);
+
+				}
+				if (decyzja == 'H' || decyzja == 'h')
+				{
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+
+				}
+			}
+		} while (decyzja != 'k' && decyzja != 'K');
+		
+
+
+		NXT::StopProgram(&comm);
+
+	}
+	NXT::Close(&comm);
+
+	cout << "\n\nPress ENTER to close program";
+	getchar();
+	*/
+	return 0;
+	
+}
+
+
+
+
+
+/*
+
+
+
+#include "NXT++.h"
+#include <iostream>
+#include <conio.h>
+
+using namespace std;
+using namespace NXT;
+
+Comm::NXTComm comm;
+
+
+
+int convert(int k, int x) {
+	x = x - k;
+	if (x > 180) x = x - 360;
+	else if (x < -180) x = 360 + x;
+	return x;
+}
+void steer(int k1, int k2, int k,
+	int orient, int cte, int prev_cte,
+	int dcte, int sum_cte, float ksi, float x, float r) {
+	cte = convert(k, orient);
+	dcte = cte - prev_cte;
+	sum_cte += cte;
+
+	int precyzja = 30;
+	if (cte <= 0) {
+		if (abs(cte) > precyzja) {
+			k2 = 0;
+		}
+		else {
+			k2 = k1 + (ksi * cte - x * dcte - r * sum_cte);
+		}
+	}
+	if (cte > 0) {
+		if (cte > precyzja) {
+			k1 = 0;
+		}
+		else {
+			k1 = k2 - (ksi * cte - x * dcte - r * sum_cte);
+		}
+	}
+
+	if (cte <= 0) {
+		NXT::Motor::SetForward(&comm, OUT_C, k1);
+		NXT::Motor::SetForward(&comm, OUT_B, k2);
+	}
+	else {
+		NXT::Motor::SetForward(&comm, OUT_B, k2);
+		NXT::Motor::SetForward(&comm, OUT_C, k1);
+	}
+	Wait(2000);
+	prev_cte = cte;
+	cout << orient << endl;
+	cout << "k1: " << k1 << " k2: " << k2 << endl;
+}
+
+int main()
+{
+	int cte, prev_cte = 0, dcte, sum_cte = 0;
+	float ksi = 0.5, x = 0.2, r = 0.3;
+	srand(time(NULL));
+	cout << "Szukanie sygnalu... to moze zajac chwile.\n";
+	if (NXT::OpenBT(&comm))
+	{
+		cout << "Sygnal znaleziony!";
+		cout << "\nPoziom baterii = " << NXT::BatteryLevel(&comm);
+		cout << "\nDostepna pamiec flash = " << NXT::GetAvailableFlash(&comm);
+
+		NXT::Sensor::SetSonar(&comm, IN_2);
+
+		NXT::StartProgram(&comm, "program1");
+		char decyzja;
+		int orient;
+		int speed = 30;
+
+		do
+		{
+			if (kbhit() == true) {
+				decyzja = getch();
+
+				if (decyzja == 'N' || decyzja == 'n') {
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 0, orient, cte,
+						prev_cte, dcte, sum_cte, ksi, x, r);
+
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+
+				}
+				if (decyzja == 'E' || decyzja == 'e')
+				{
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 90, orient, cte,
+						prev_cte, dcte, sum_cte, ksi, x, r);
+
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+				}
+				if (decyzja == 'S' || decyzja == 's')
+				{
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 180, orient, cte,
+						prev_cte, dcte, sum_cte, ksi, x, r);
+
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+				}
+				if (decyzja == 'W' || decyzja == 'w')
+				{
+
+					orient = 2 * NXT::Sensor::GetSonarValue(&comm, IN_2);
+					steer(speed, speed, 270, orient, cte,
+						prev_cte, dcte, sum_cte, ksi, x, r);
+
+					NXT::Motor::SetForward(&comm, OUT_B, 0);
+					NXT::Motor::SetForward(&comm, OUT_C, 0);
+					NXT::Motor::Stop(&comm, OUT_B, 0);
+					NXT::Motor::Stop(&comm, OUT_C, 0);
+				}
+			}
+		} while (decyzja != 'k' && decyzja != 'K');
+
+
+
+		NXT::StopProgram(&comm);
+
+	}
+	NXT::Close(&comm);
+
+	cout << "\n\nPress ENTER to close program";
+	getchar();
+
+	return 0;
+}
+
+*/
